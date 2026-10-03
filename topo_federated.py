@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
+import os
 from mininet.net import Mininet
-from mininet.node import Controller, OVSKernelSwitch
+from mininet.node import OVSKernelSwitch
 from mininet.cli import CLI
 from mininet.log import setLogLevel
 
 def create_topology():
     # Menggunakan OVS Switch dengan OpenFlow 1.3 sesuai spesifikasi paper
-    net = Mininet(topo=None, build=False, ipBase='10.0.0.0/8')
+    net = Mininet(topo=None, build=False, ipBase='10.0.0.0/8', controller=None)
 
-    print("*** Menambahkan Kontroler Jaringan Standar (Mencegah Error Port 5000) ***")
-    # PERBAIKAN: Menggunakan Controller bawaan lokal agar port 5000 aman dari OpenFlow
-    c0 = net.addController(name='c0', controller=Controller)
+    print("*** Tanpa kontroler eksternal: OVS mode standalone (L2 learning switch) ***")
+    # PERBAIKAN: Controller bawaan butuh binary 'controller' -> jika tidak ada, switch tanpa flow
+    # dan semua ping drop. failMode='standalone' membuat OVS meneruskan trafik sendiri.
 
     print("*** Menambahkan OVS Switch ***")
-    s1 = net.addSwitch('s1', cls=OVSKernelSwitch, protocols='OpenFlow13')
+    s1 = net.addSwitch('s1', cls=OVSKernelSwitch, protocols='OpenFlow13', failMode='standalone')
 
     print("*** Menambahkan 4 Hosts untuk Federated Agents (Sinkronisasi dengan Backend) ***")
     # PERBAIKAN: Menambahkan h4 agar total menjadi 4 client seperti di backend server
@@ -30,6 +31,8 @@ def create_topology():
 
     print("*** Memulai Jaringan ***")
     net.start()
+    # Agar agent di host bisa menjangkau Flask (http://10.0.0.254:5000) di root namespace
+    os.system('ip addr flush dev s1; ip addr add 10.0.0.254/8 dev s1; ip link set s1 up')
 
     print("*** Menjalankan 4 Local Firewall Agents pada Host ***")
     # PERBAIKAN: Jalankan agen di keempat host menggunakan path venv absolut danielagra

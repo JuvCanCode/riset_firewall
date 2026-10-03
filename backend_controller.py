@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 import torch
 import torch.nn as nn
 import numpy as np
+import time
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 
 app = Flask(__name__)
@@ -32,27 +33,22 @@ history_metrics = {
     "precision": [],
     "recall": [],
     "f1_score": [],
-    "fpr": []
+    "fpr": [],
+    "timestamp": [],  # waktu (epoch detik) selesainya tiap ronde agregasi -> untuk pemetaan fase skenario
+    # Confusion matrix evaluasi federated pada TRAFIK RIIL (jumlah dari keempat agent per ronde)
+    "real_tp": [], "real_fp": [], "real_tn": [], "real_fn": []
 }
 
 # =====================================================================
-# SOLUSI KRITIKAL: SERVER-SIDE VALIDATION DATASET (VALID SECARA AKADEMIS)
+# SERVER-SIDE VALIDATION DATASET
 # =====================================================================
-# Membuat data uji sintetis terisolasi di server yang merepresentasikan 
-# traffic normal (label 0) dan serangan port scanning/DDoS (label 1) 
-# agar metrik dihitung dari Confusion Matrix riil, bukan rumus buatan.
-np.random.seed(42)
-num_test_samples = 200
-
-# 10 Fitur: [p_size, time_sin, seq_num, src_ip, dst_ip, proto, ttl, conn_count, suspicious, entropy]
-test_features = np.random.rand(num_test_samples, 10).astype(np.float32)
-test_labels = np.zeros((num_test_samples, 1), dtype=np.float32)
-
-# Mengondisikan 40% data uji sebagai traffic serangan (malicious)
-for i in range(int(num_test_samples * 0.4)):
-    test_features[i, 0] = 0.95  # Ukuran paket besar (DDoS)
-    test_features[i, 8] = 1.0   # Suspicious score aktif (Port Scanning)
-    test_labels[i, 0] = 1.0
+# Data uji sintetis terisolasi di server (benign = label 0, serangan = label 1).
+# PERBAIKAN: dibangkitkan oleh features.synth_dataset() yang memakai SKALA & SEMANTIK FITUR
+# YANG SAMA dengan FeatureExtractor di agent. Sebelumnya fitur uji acak uniform dengan
+# p_size=0.95 sebagai penanda serangan, padahal di agent p_size maksimal ~0.02 -> model global
+# tidak pernah bisa mengenali serangan di data uji (Precision/Recall = 0).
+from features import synth_dataset
+test_features, test_labels = synth_dataset(n=1000, attack_ratio=0.4, seed=42)
 
 X_test = torch.tensor(test_features)
 y_test = torch.tensor(test_labels)
@@ -74,13 +70,17 @@ def upload_weights():
     received_updates[host_id] = {
         'state_dict': state_dict,
         'accuracy': accuracy,
-        'sample_size': sample_size
+        'sample_size': sample_size,
+        'eval': data.get('eval', {"tp": 0, "fp": 0, "tn": 0, "fn": 0})
     }
     
-    print(f"[ROUND {round_count}] Menerima update dari {host_id} (Akurasi Lokal: {accuracy:.3f})")
+    ev = received_updates[host_id]['eval']
+    print(f"[ROUND {round_count}] Menerima update dari {host_id} (Akurasi Lokal: {accuracy:.3f}, "
+          f"Eval riil TP={ev['tp']} FP={ev['fp']} TN={ev['tn']} FN={ev['fn']})")
     
     # Agregasi dieksekusi jika ketiga host (h1, h2, h3) telah menyetor model lokal
-    if len(received_updates) == 3:
+    # Harus diubah ke 4 karena topologi menggunakan h1, h2, h3, dan h4
+    if len(received_updates) == 4:
         aggregate_models()
         round_count += 1
         received_updates.clear()
@@ -91,9 +91,14 @@ def aggregate_models():
     global global_model, received_updates, history_metrics
     print(f"--- Memulai Quality-Weighted Aggregation Ronde {round_count} ---")
     
-    total_quality_score = sum([node['accuracy'] * node['sample_size'] for node in received_updates.values()])
-    if total_quality_score == 0:
-        return
+    # Skor kualitas = balanced accuracy lokal x jumlah sampel
+    scores = {h: node['accuracy'] * node['sample_size'] for h, node in received_updates.items()}
+    total_quality_score = sum(scores.values())
+    if total_quality_score <= 0:
+        # PERBAIKAN: sebelumnya ronde dilewati diam-diam. Fallback ke FedAvg berbasis jumlah sampel.
+        print("-> Skor kualitas total 0, fallback ke FedAvg (bobot jumlah sampel).")
+        scores = {h: float(node['sample_size']) for h, node in received_updates.items()}
+        total_quality_score = sum(scores.values()) or 1.0
         
     global_state = global_model.state_dict()
     new_global_state = {key: torch.zeros_like(val, dtype=torch.float32) for key, val in global_state.items()}
@@ -101,7 +106,7 @@ def aggregate_models():
     # Formula Pembobotan Kualitas (Quality-Weighted Federated Aggregation)
     for key in new_global_state.keys():
         for host_id, node in received_updates.items():
-            quality_factor = (node['accuracy'] * node['sample_size']) / total_quality_score
+            quality_factor = scores[host_id] / total_quality_score
             new_global_state[key] += node['state_dict'][key].float() * quality_factor
             
     global_model.load_state_dict(new_global_state)
@@ -132,6 +137,9 @@ def aggregate_models():
     history_metrics["recall"].append(rec)
     history_metrics["f1_score"].append(f1)
     history_metrics["fpr"].append(fpr)
+    history_metrics["timestamp"].append(time.time())
+    for k in ("tp", "fp", "tn", "fn"):
+        history_metrics[f"real_{k}"].append(sum(int(n['eval'].get(k, 0)) for n in received_updates.values()))
     
     print(f"[SERVER EVAL ROUND {round_count}] Hasil Riil -> Acc: {acc:.4f}, Prec: {prec:.4f}, Rec: {rec:.4f}, FPR: {fpr:.4f}")
 
@@ -139,6 +147,23 @@ def aggregate_models():
 def get_global_model():
     state_dict_serializable = {k: v.numpy().tolist() for k, v in global_model.state_dict().items()}
     return jsonify({"state_dict": state_dict_serializable, "round": round_count})
+
+@app.route('/get_history', methods=['GET'])
+def get_history():
+    # Riwayat metrik per ronde (beserta timestamp) untuk analisis per fase skenario
+    return jsonify({k: [float(x) for x in v] for k, v in history_metrics.items()})
+
+@app.route('/reset', methods=['POST'])
+def reset_state():
+    # Dipanggil di awal tiap eksperimen agar hasil run sebelumnya tidak ikut terhitung
+    global global_model, round_count
+    global_model = FirewallNN()
+    round_count = 0
+    received_updates.clear()
+    for v in history_metrics.values():
+        v.clear()
+    print("[RESET] State server dikosongkan untuk eksperimen baru.")
+    return jsonify({"status": "reset"})
 
 @app.route('/get_evaluation_metrics', methods=['GET'])
 def get_evaluation_metrics():
@@ -149,12 +174,14 @@ def get_evaluation_metrics():
             "precision": float(np.mean(history_metrics["precision"])),
             "recall": float(np.mean(history_metrics["recall"])),
             "f1_score": float(np.mean(history_metrics["f1_score"])),
-            "fpr": float(np.mean(history_metrics["fpr"]))
+            "fpr": float(np.mean(history_metrics["fpr"])),
+            "rounds": len(history_metrics["accuracy"])
         })
     else:
         # Jika otomatisasi meminta metrik terlalu dini sebelum agregasi pertama selesai
         return jsonify({
-            "accuracy": 0.0, "precision": 0.0, "recall": 0.0, "f1_score": 0.0, "fpr": 0.0
+            "accuracy": 0.0, "precision": 0.0, "recall": 0.0, "f1_score": 0.0, "fpr": 0.0,
+            "rounds": 0
         })
 
 if __name__ == '__main__':

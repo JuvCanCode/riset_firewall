@@ -1,1 +1,51 @@
-bash: /home/danielagra/Federated-Firewall/riset_firewall/venv/bin/python3: No such file or directory
+/usr/local/lib/python3.14/site-packages/scapy/layers/tls/crypto/groups.py:25: CryptographyDeprecationWarning: Diffie-Hellman over finite fields (FFDH) is deprecated and support will be removed in a future release. Use a more modern key exchange algorithm.
+  from cryptography.hazmat.primitives.asymmetric.dh import DHParameterNumbers
+[h4] Agen Jaringan Aktif di IP 10.0.0.4. Memulai Sniffing...
+
+[h4 - RONDE 1] Mengendus trafik via Scapy...
+[h4] Trafik riil: 0 paket (sampel 0, serangan 0) | Eval global model -> TP=0 FP=0 TN=0 FN=0
+[h4] Trafik riil minim (0). Menggunakan baseline telemetry untuk kestabilan FL...
+[h4] Akurasi Lokal (balanced): 1.000 | data latih 10 (serangan 0)
+[h4] Sinkronisasi Model Global Ronde 1 Sukses.
+
+[h4 - RONDE 2] Mengendus trafik via Scapy...
+[h4] Trafik riil: 78 paket (sampel 78, serangan 0) | Eval global model -> TP=0 FP=0 TN=78 FN=0
+[h4] Akurasi Lokal (balanced): 1.000 | data latih 156 (serangan 0)
+[h4] Sinkronisasi Model Global Ronde 2 Sukses.
+
+[h4 - RONDE 3] Mengendus trafik via Scapy...
+[h4] Trafik riil: 89 paket (sampel 89, serangan 0) | Eval global model -> TP=0 FP=0 TN=89 FN=0
+[h4] Akurasi Lokal (balanced): 1.000 | data latih 256 (serangan 0)
+[h4] Sinkronisasi Model Global Ronde 3 Sukses.
+
+[h4 - RONDE 4] Mengendus trafik via Scapy...
+[h4] Trafik riil: 74 paket (sampel 74, serangan 0) | Eval global model -> TP=0 FP=0 TN=74 FN=0
+[h4] Akurasi Lokal (balanced): 1.000 | data latih 274 (serangan 0)
+[h4] Sinkronisasi Model Global Ronde 4 Sukses.
+
+[h4 - RONDE 5] Mengendus trafik via Scapy...
+[h4] Trafik riil: 25113 paket (sampel 3000, serangan 3000) | Eval global model -> TP=0 FP=0 TN=0 FN=3000
+[h4] Akurasi Lokal (balanced): 0.999 | data latih 4741 (serangan 4500)
+[h4] Sinkronisasi Model Global Ronde 5 Sukses.
+
+[h4 - RONDE 6] Mengendus trafik via Scapy...
+[h4] Trafik riil: 26259 paket (sampel 3000, serangan 3000) | Eval global model -> TP=3000 FP=0 TN=0 FN=0
+[h4] Akurasi Lokal (balanced): 1.000 | data latih 4741 (serangan 4500)
+[h4] Sinkronisasi Model Global Ronde 6 Sukses.
+
+[h4 - RONDE 7] Mengendus trafik via Scapy...
+[h4] Trafik riil: 52 paket (sampel 52, serangan 0) | Eval global model -> TP=0 FP=0 TN=52 FN=0
+[h4] Akurasi Lokal (balanced): 1.000 | data latih 452 (serangan 200)
+[h4] Sinkronisasi Model Global Ronde 7 Sukses.
+
+[h4 - RONDE 8] Mengendus trafik via Scapy...
+[h4] Trafik riil: 74 paket (sampel 74, serangan 0) | Eval global model -> TP=0 FP=0 TN=74 FN=0
+[h4] Akurasi Lokal (balanced): 1.000 | data latih 474 (serangan 200)
+[h4] Sinkronisasi Model Global Ronde 8 Sukses.
+
+[h4 - RONDE 9] Mengendus trafik via Scapy...
+[h4] Trafik riil: 22 paket (sampel 22, serangan 0) | Eval global model -> TP=0 FP=0 TN=22 FN=0
+[h4] Akurasi Lokal (balanced): 1.000 | data latih 422 (serangan 200)
+[h4] Sinkronisasi Model Global Ronde 9 Sukses.
+
+[h4 - RONDE 10] Mengendus trafik via Scapy...

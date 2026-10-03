@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 import argparse
+import random
 import time
 import requests
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
-from scapy.all import sniff, IP, TCP, UDP, ICMP
+from scapy.all import sniff
+
+from features import FeatureExtractor, baseline_benign
 
 class FirewallNN(nn.Module):
     def __init__(self):
@@ -22,37 +24,46 @@ class FirewallNN(nn.Module):
         x = torch.relu(self.fc2(x))
         return torch.sigmoid(self.fc3(x))
 
+# --- Hyperparameter pelatihan lokal ---
+SNIFF_TIMEOUT = 10        # detik per ronde
+MAX_ROUND_SAMPLES = 3000  # batasi sampel per ronde (ICMP flood bisa menghasilkan puluhan ribu paket)
+REPLAY_PER_CLASS = 2000   # memori replay per kelas -> mencegah model "lupa" kelas yang sedang tidak muncul
+LOCAL_EPOCHS = 5
+BATCH_SIZE = 128
+LR = 0.005
+
+extractor = FeatureExtractor()
 captured_flows = []
 
 def process_packet(packet):
-    global captured_flows
-    if IP in packet:
-        # 1. PERBAIKAN: Penskalaan ukuran paket yang lebih adaptif (dibagi 65535 / Max IP Packet)
-        p_size = len(packet) / 65535.0  
-        
-        time_sin = np.sin(2 * np.pi * (time.time() % 86400) / 86400.0) 
-        seq_num = packet[TCP].seq / 4294967295.0 if TCP in packet else 0.0 
-        
-        src_ip = float(packet[IP].src.split('.')[-1]) / 255.0 
-        dst_ip = float(packet[IP].dst.split('.')[-1]) / 255.0 
-        
-        proto = 0.1 if TCP in packet else (0.2 if UDP in packet else (0.3 if ICMP in packet else 0.4))
-        ttl = packet[IP].ttl / 255.0 
-        
-        conn_count = len(captured_flows) / 100.0 
-        
-        suspicious = 0.0
-        if TCP in packet and packet[TCP].dport in:
-            suspicious = 1.0 
-            
-        traffic_entropy = np.random.rand() * 0.5 if suspicious == 1.0 else np.random.rand() * 0.1 
-        
-        # PERBAIKAN GROUND TRUTH: Paket normal tidak akan lagi tidak sengaja terlabeli sebagai serangan
-        # Serangan didefinisikan jika terdeteksi scanning port terlarang ATAU lonjakan paket ICMP Flood ekstrem
-        label = 1.0 if (suspicious == 1.0) or (ICMP in packet and len(packet) > 1000) else 0.0
-        
-        feature_vector = [p_size, time_sin, seq_num, src_ip, dst_ip, proto, ttl, conn_count, suspicious, traffic_entropy]
-        captured_flows.append((feature_vector, [label]))
+    item = extractor.extract(packet)
+    if item is not None:
+        captured_flows.append(item)
+
+def confusion(model, samples):
+    """Evaluasi model pada sampel: kembalikan (tp, fp, tn, fn)."""
+    if not samples:
+        return 0, 0, 0, 0
+    X = torch.tensor([s[0] for s in samples], dtype=torch.float32)
+    y = torch.tensor([s[1] for s in samples], dtype=torch.float32)
+    model.eval()
+    with torch.no_grad():
+        p = (model(X) > 0.5).float()
+    tp = int(((p == 1) & (y == 1)).sum()); fp = int(((p == 1) & (y == 0)).sum())
+    tn = int(((p == 0) & (y == 0)).sum()); fn = int(((p == 0) & (y == 1)).sum())
+    return tp, fp, tn, fn
+
+def reservoir_add(buffer, items, seen, cap):
+    """Reservoir sampling: memori replay tetap representatif dari seluruh riwayat."""
+    for it in items:
+        seen += 1
+        if len(buffer) < cap:
+            buffer.append(it)
+        else:
+            j = random.randrange(seen)
+            if j < cap:
+                buffer[j] = it
+    return seen
 
 def main():
     global captured_flows
@@ -61,49 +72,76 @@ def main():
     parser.add_argument('--ip', type=str, required=True)
     args = parser.parse_args()
     
-    server_url = "http://127.0.0.1:5000"
+    server_url = "http://10.0.0.254:5000"
     local_model = FirewallNN()
-    criterion = nn.BCELoss()
-    optimizer = optim.Adam(local_model.parameters(), lr=0.01)
+    optimizer = optim.Adam(local_model.parameters(), lr=LR)
     
     print(f"[{args.host}] Agen Jaringan Aktif di IP {args.ip}. Memulai Sniffing...")
     iface_name = f"{args.host}-eth0"
+
+    replay = {0: [], 1: []}
+    seen = {0: 0, 1: 0}
     
     round_idx = 1
     while True:
         print(f"\n[{args.host} - RONDE {round_idx}] Mengendus trafik via Scapy...")
         
-        # PERBAIKAN: Menambahkan store=0 agar memori RAM RAM Fedora Anda tidak bengkak/keburu drop
-        sniff(iface=iface_name, prn=process_packet, filter="ip", timeout=10, store=0)
-        
-        # Jika trafik sepi (karena diblokir switch), kita berikan data dummy dasar (fall-back data)
-        # Langkah ini krusial agar agen TIDAK AKAN PERNAH melewati (skip) ronde FL, 
-        # sehingga kondisi agregasi server (==4) pasti terpenuhi dan CSV Anda terisi angka!
-        if len(captured_flows) < 5:
-            print(f"[{args.host}] Trafik riil minim ({len(captured_flows)}). Menggunakan baseline telemetry untuk kestabilan FL...")
-            for _ in range(10):
-                dummy_feat = [0.01, 0.5, 0.0, 0.1, 0.2, 0.1, 0.25, 0.01, 0.0, 0.02]
-                captured_flows.append((dummy_feat, [0.0]))
-                
-        features = torch.tensor([item for item in captured_flows], dtype=torch.float32)
-        labels = torch.tensor([item for item in captured_flows], dtype=torch.float32)
-        
+        # store=0 agar memori RAM tidak bengkak
+        sniff(iface=iface_name, prn=process_packet, filter="ip", timeout=SNIFF_TIMEOUT, store=0)
+
+        # Abaikan trafik kontrol FL (agent <-> server 10.0.0.254) agar tidak mencemari dataset
+        new_samples = [s for s in captured_flows if abs(s[0][3] - 254 / 255.0) > 1e-6 and abs(s[0][4] - 254 / 255.0) > 1e-6]
+        n_raw = len(new_samples)
+        if len(new_samples) > MAX_ROUND_SAMPLES:
+            new_samples = random.sample(new_samples, MAX_ROUND_SAMPLES)
+        n_att = sum(1 for s in new_samples if s[1][0] == 1.0)
+
+        # ---- 1) Evaluasi PREQUENTIAL (test-then-train) ----
+        # Model global ronde sebelumnya diuji pada trafik riil BARU sebelum dipakai melatih.
+        tp, fp, tn, fn = confusion(local_model, new_samples)
+        print(f"[{args.host}] Trafik riil: {n_raw} paket (sampel {len(new_samples)}, serangan {n_att}) | "
+              f"Eval global model -> TP={tp} FP={fp} TN={tn} FN={fn}")
+
+        # ---- 2) Susun data latih: data baru + replay seimbang ----
+        for cls in (0, 1):
+            seen[cls] = reservoir_add(replay[cls], [s for s in new_samples if int(s[1][0]) == cls],
+                                      seen[cls], REPLAY_PER_CLASS)
+        train = list(new_samples)
+        for cls in (0, 1):
+            if replay[cls]:
+                k = min(len(replay[cls]), max(200, len(new_samples) // 2))
+                train += random.sample(replay[cls], k)
+        if len(train) < 5:
+            print(f"[{args.host}] Trafik riil minim ({len(train)}). Menggunakan baseline telemetry untuk kestabilan FL...")
+            train += baseline_benign(10)
+
+        X = torch.tensor([s[0] for s in train], dtype=torch.float32)
+        y = torch.tensor([s[1] for s in train], dtype=torch.float32)
+
+        # Class weighting: kelas minoritas diberi bobot lebih besar agar model tidak menebak 1 kelas saja
+        n_pos = float(y.sum()); n_neg = float(len(y) - n_pos)
+        w_pos = (len(y) / (2 * n_pos)) if n_pos > 0 else 1.0
+        w_neg = (len(y) / (2 * n_neg)) if n_neg > 0 else 1.0
+
         local_model.train()
-        for epoch in range(3):
-            optimizer.zero_grad()
-            outputs = local_model(features)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            
-        local_model.eval()
-        with torch.no_grad():
-            predictions = local_model(features)
-            predicted_classes = (predictions > 0.5).float()
-            correct = (predicted_classes == labels).sum().item()
-            local_accuracy = correct / len(labels)
-            
-        print(f"[{args.host}] Akurasi Lokal: {local_accuracy:.3f}")
+        for epoch in range(LOCAL_EPOCHS):
+            perm = torch.randperm(len(X))
+            for b in range(0, len(X), BATCH_SIZE):
+                idx = perm[b:b + BATCH_SIZE]
+                xb, yb = X[idx], y[idx]
+                weights = torch.where(yb == 1, torch.tensor(w_pos), torch.tensor(w_neg))
+                optimizer.zero_grad()
+                loss = nn.functional.binary_cross_entropy(local_model(xb), yb, weight=weights)
+                loss.backward()
+                optimizer.step()
+
+        # Akurasi seimbang (balanced accuracy) -> dipakai sebagai skor kualitas agregasi di server
+        ltp, lfp, ltn, lfn = confusion(local_model, train)
+        tpr = ltp / (ltp + lfn) if (ltp + lfn) else None
+        tnr = ltn / (ltn + lfp) if (ltn + lfp) else None
+        parts = [v for v in (tpr, tnr) if v is not None]
+        local_accuracy = sum(parts) / len(parts) if parts else 0.0
+        print(f"[{args.host}] Akurasi Lokal (balanced): {local_accuracy:.3f} | data latih {len(train)} (serangan {int(n_pos)})")
         
         state_dict_serializable = {k: v.numpy().tolist() for k, v in local_model.state_dict().items()}
         
@@ -111,14 +149,15 @@ def main():
             "host_id": args.host,
             "state_dict": state_dict_serializable,
             "accuracy": float(local_accuracy),
-            "sample_size": int(len(labels))
+            "sample_size": int(len(train)),
+            "eval": {"tp": tp, "fp": fp, "tn": tn, "fn": fn}
         }
         
         try:
-            response = requests.post(f"{server_url}/upload_weights", json=payload)
+            response = requests.post(f"{server_url}/upload_weights", json=payload, timeout=30)
             if response.status_code == 200:
                 time.sleep(2)
-                get_resp = requests.get(f"{server_url}/get_global_model")
+                get_resp = requests.get(f"{server_url}/get_global_model", timeout=30)
                 if get_resp.status_code == 200:
                     global_data = get_resp.json()
                     global_state_dict = {k: torch.tensor(v) for k, v in global_data['state_dict'].items()}

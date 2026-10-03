@@ -14,5 +14,13 @@
   },
   "federated_learning": {
     "backend_url": "http://127.0.0.1:5000"
+  },
+  "scenario": {
+    "benign_1_duration": 45,
+    "ddos_duration": 45,
+    "benign_2_duration": 45,
+    "ddos_target": "h2",
+    "ddos_attackers": ["h3", "h4"],
+    "ddos_payload_size": 1200
   }
 }
