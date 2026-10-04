@@ -19,6 +19,7 @@ def generate_visual_report():
     # Set tema grafik agar terlihat profesional untuk jurnal/skripsi
     sns.set_theme(style="whitegrid")
     plt.rcParams.update({'font.size': 11})
+    #test test
 
     # =========================================================================
     # GRAFIK 1: Tren Penurunan Loss per Node sepanjang Epoch dan Round
