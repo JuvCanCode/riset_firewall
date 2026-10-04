@@ -10,27 +10,15 @@ from mininet.node import OVSKernelSwitch
 from mininet.log import setLogLevel
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BLOCKED_PROBE_PORT = 4444   # termasuk security_policy.blocked_ports
 
 def load_config():
     with open(os.path.join(BASE_DIR, 'config.json'), 'r') as f:
         return json.load(f)
 
 def resolve_agent_python():
-    """Cari interpreter Python yang punya torch + scapy untuk local agent.
-    Urutan: env AGENT_PYTHON -> venv proyek -> interpreter yang sedang dipakai."""
-    candidates = [
-        os.environ.get('AGENT_PYTHON'),
-        os.path.join(BASE_DIR, 'venv', 'bin', 'python3'),
-        os.path.join(BASE_DIR, '..', 'venv', 'bin', 'python3'),
-        sys.executable,
-    ]
-    for c in candidates:
-        if c and os.path.isfile(c) and os.access(c, os.X_OK):
-            ok = os.system(f'"{c}" -c "import torch, scapy, requests, numpy" >/dev/null 2>&1') == 0
-            if ok:
-                return c
-            print(f"[WARN] {c} ada, tapi modul torch/scapy/requests/numpy tidak lengkap.")
-    return None
+    """Gunakan interpreter yang sama dengan yang menjalankan skrip ini."""
+    return sys.executable
 
 def wait_backend(backend_url, timeout=10):
     deadline = time.time() + timeout
@@ -49,27 +37,18 @@ def run_automated_experiment():
     topo_config = config['topology']
     backend_url = config['federated_learning']['backend_url']
 
-    # Pre-flight check: backend & interpreter agent harus siap SEBELUM Mininet dibangun
     if not wait_backend(backend_url):
         print(f"[FATAL] Backend {backend_url} tidak merespon. Jalankan dulu: python3 backend_controller.py")
         return
-    # Kosongkan state server agar ronde dari run sebelumnya tidak ikut terhitung
-    requests.post(f"{backend_url}/reset", timeout=5)
+    requests.post(f"{backend_url}/reset", timeout=5)   # reset juga mengembalikan mode ke 'train'
     agent_python = resolve_agent_python()
-    if agent_python is None:
-        print("[FATAL] Tidak ada interpreter Python dengan torch+scapy. Buat venv atau set AGENT_PYTHON=/path/python3")
-        return
     print(f"[CONFIG-AUTOMATION] Interpreter agent: {agent_python}")
-    
-    # PERBAIKAN: Tanpa controller eksternal. Class Controller bawaan butuh binary
-    # 'controller' yang sering tidak terpasang -> OVS mode 'secure' tanpa flow -> ping 100% drop.
-    # failMode='standalone' membuat OVS bertindak sebagai L2 learning switch (action NORMAL).
+
     net = Mininet(topo=None, build=False, ipBase='10.0.0.0/8', controller=None)
-    
+
     print(f"[CONFIG-AUTOMATION] Mengonstruksi OVS Switch: {topo_config['switch_name']} (standalone)")
     s1 = net.addSwitch(topo_config['switch_name'], cls=OVSKernelSwitch, failMode='standalone')
 
-    # 1. Membuat daftar 4 Host Jaringan secara Dinamis
     print("[CONFIG-AUTOMATION] Membuat daftar 4 Host Jaringan...")
     mininet_hosts = {}
     for host_data in topo_config['hosts']:
@@ -83,19 +62,19 @@ def run_automated_experiment():
     print("[CONFIG-AUTOMATION] Membuka jalur komunikasi Mininet ke Flask Server...")
     sw = topo_config['switch_name']
     os.system(f'ip addr flush dev {sw}; ip addr add 10.0.0.254/8 dev {sw}; ip link set {sw} up')
+    os.system(f'ovs-ofctl add-flow {sw} actions=NORMAL')
 
-    # Verifikasi konektivitas data-plane sebelum eksperimen dimulai
     loss = net.pingAll(timeout=1)
     if loss > 0:
         print(f"[WARN] Packet loss awal {loss}% - cek konfigurasi OVS (ovs-vsctl show).")
-    
-    # 2. Loop Otomatis Mengaktifkan 4 Local Agents
+
     print("[CONFIG-AUTOMATION] Menginjeksi dan Menyalakan Local Agents pada 4 Host...")
     agent_script = os.path.join(BASE_DIR, 'local_agent.py')
+    ppath = os.environ.get('PYTHONPATH', '')
     for host_name, host_obj in mininet_hosts.items():
         ip_addr = host_obj.IP()
         log_file = os.path.join(BASE_DIR, f'{host_name}_agent.log')
-        cmd_string = f'"{agent_python}" -u "{agent_script}" --host {host_name} --ip {ip_addr} > "{log_file}" 2>&1 &'
+        cmd_string = f'PYTHONPATH="{ppath}" "{agent_python}" -u "{agent_script}" --host {host_name} --ip {ip_addr} > "{log_file}" 2>&1 &'
         host_obj.cmd(cmd_string)
 
     print("[CONFIG-AUTOMATION] Menunggu stabilisasi siklus awal FL Jaringan (15 detik)...")
@@ -108,22 +87,27 @@ def run_automated_experiment():
             net.stop()
             return
 
-    # Menarik referensi objek 4 host secara terpisah
     h1 = mininet_hosts['h1']
     h2 = mininet_hosts['h2']
     h3 = mininet_hosts['h3']
     h4 = mininet_hosts['h4']
 
     sc = config.get('scenario', {})
+    # Fase learning (model dilatih; berisi benign + burst serangan)
+    learn_cycles = int(sc.get('learn_cycles', 4))
+    learn_idle = int(sc.get('learn_idle', 20))      # detik benign sebelum tiap burst
+    learn_burst = int(sc.get('learn_burst', 10))    # detik durasi tiap burst serangan
+    port_probe = bool(sc.get('port_probe', True))   # sertakan akses ke port terlarang
+    # Fase test (model dibekukan)
     d_benign1 = int(sc.get('benign_1_duration', 45))
     d_ddos = int(sc.get('ddos_duration', 45))
     d_benign2 = int(sc.get('benign_2_duration', 45))
     victim = mininet_hosts[sc.get('ddos_target', 'h2')]
     attackers = [mininet_hosts[n] for n in sc.get('ddos_attackers', ['h3', 'h4'])]
     payload = int(sc.get('ddos_payload_size', 1200))
-    total_duration = d_benign1 + d_ddos + d_benign2 + 30
+    d_learn = learn_cycles * (learn_idle + learn_burst + 1)
+    total_duration = d_learn + d_benign1 + d_ddos + d_benign2 + 60
 
-    # Listener TCP benign (hidup sepanjang eksperimen, restart otomatis tiap koneksi selesai)
     h1.cmd(f"timeout {total_duration} sh -c 'while true; do nc -l -p 8889 > /dev/null 2>&1; done' > /dev/null 2>&1 &")
     h2.cmd(f"timeout {total_duration} sh -c 'while true; do nc -l -p 8888 > /dev/null 2>&1; done' > /dev/null 2>&1 &")
     time.sleep(1)
@@ -136,45 +120,70 @@ def run_automated_experiment():
                     f"sleep 1; done")
             src.cmd(f"timeout {duration} sh -c '{loop}' > /dev/null 2>&1 &")
 
-    # Semua host berperilaku normal di fase benign
+    def start_flood(duration):
+        for a in attackers:
+            a.cmd(f'ping -f -s {payload} -w {duration} {victim.IP()} > /dev/null 2>&1 &')
+
+    def stop_flood():
+        for a in attackers:
+            a.cmd('pkill -f "ping -f"')
+
+    def start_port_probe(duration):
+        """Akses TCP ke port terlarang (label serangan kelas 'port scan')."""
+        for a in attackers:
+            loop = f"while true; do nc -w 1 -z {victim.IP()} {BLOCKED_PROBE_PORT} > /dev/null 2>&1; sleep 0.5; done"
+            a.cmd(f"timeout {duration} sh -c '{loop}' > /dev/null 2>&1 &")
+
     benign_all = [(h1, h2, 8888), (h2, h1, 8889), (h3, h1, 8889), (h4, h2, 8888)]
-    # Saat DDoS, host non-attacker tetap mengirim trafik normal (realistis: serangan bercampur trafik sah)
     benign_bg = [p for p in benign_all if p[0] not in attackers]
 
     phases = []  # (nama_fase, waktu_mulai)
 
-    # ================= FASE 1: BENIGN =================
-    print(f"\n[FASE 1 - BENIGN] Trafik normal seluruh host selama {d_benign1} detik...")
-    phases.append(('Fase1_Benign', time.time()))
+    # ================= FASE 1: LEARNING (benign + burst serangan, model dilatih) =================
+    requests.post(f"{backend_url}/set_mode", json={"mode": "train"}, timeout=5)
+    print(f"\n[FASE 1 - LEARNING] {learn_cycles} siklus: {learn_idle}s benign + {learn_burst}s burst serangan "
+          f"(total {d_learn}s). Model DILATIH.")
+    phases.append(('Fase1_Learning', time.time()))
+    start_benign(benign_all, d_learn)
+    for c in range(learn_cycles):
+        time.sleep(learn_idle)
+        print(f" -> Burst serangan {c + 1}/{learn_cycles}")
+        start_flood(learn_burst)
+        if port_probe:
+            start_port_probe(learn_burst)
+        time.sleep(learn_burst + 1)
+        stop_flood()
+
+    # ================= FASE TEST: model dibekukan =================
+    requests.post(f"{backend_url}/set_mode", json={"mode": "test"}, timeout=5)
+
+    print(f"\n[FASE 2 - TEST/BENIGN] Model DIBEKUKAN. Trafik normal selama {d_benign1} detik...")
+    phases.append(('Fase2_Test_Benign', time.time()))
     start_benign(benign_all, d_benign1)
     net.ping([h1, h2])
     time.sleep(d_benign1)
 
-    # ================= FASE 2: DDoS =================
     names = ", ".join(a.name for a in attackers)
-    print(f"\n[FASE 2 - DDoS] {names} melancarkan ICMP Flood (payload {payload} B) ke {victim.name} "
+    print(f"\n[FASE 3 - TEST/DDoS] {names} ICMP Flood (payload {payload} B) ke {victim.name} "
           f"({victim.IP()}) selama {d_ddos} detik + trafik normal latar...")
-    phases.append(('Fase2_DDoS', time.time()))
+    phases.append(('Fase3_Test_DDoS', time.time()))
     start_benign(benign_bg, d_ddos)
-    for a in attackers:
-        # payload besar agar sesuai definisi label serangan di local_agent (ICMP len > 1000)
-        a.cmd(f'ping -f -s {payload} -w {d_ddos} {victim.IP()} > /dev/null 2>&1 &')
+    start_flood(d_ddos)
+    if port_probe:
+        start_port_probe(d_ddos)
     time.sleep(d_ddos)
-    for a in attackers:
-        a.cmd('pkill -f "ping -f"')
+    stop_flood()
 
-    # ================= FASE 3: BENIGN (RECOVERY) =================
-    print(f"\n[FASE 3 - BENIGN] Serangan berhenti, kembali trafik normal selama {d_benign2} detik...")
-    phases.append(('Fase3_Benign', time.time()))
+    print(f"\n[FASE 4 - TEST/BENIGN] Serangan berhenti, kembali trafik normal selama {d_benign2} detik...")
+    phases.append(('Fase4_Test_Benign', time.time()))
     start_benign(benign_all, d_benign2)
     print(" -> Uji konektivitas pasca-serangan:")
     net.ping([h1, h2])
     time.sleep(d_benign2)
 
-    print("\n[CONFIG-AUTOMATION] Menunggu ronde FL terakhir selesai (15 detik)...")
-    time.sleep(15)
+    print("\n[CONFIG-AUTOMATION] Menunggu ronde FL terakhir selesai (25 detik)...")
+    time.sleep(25)
 
-    # 5. Menarik Hasil Metrik Evaluasi Riil dari Server, dipetakan per fase
     print("\n[CONFIG-AUTOMATION] Menarik riwayat metrik evaluasi dari Server...")
     try:
         hist = requests.get(f"{backend_url}/get_history", timeout=5).json()
@@ -185,7 +194,6 @@ def run_automated_experiment():
             metric_keys = ['accuracy', 'precision', 'recall', 'f1_score', 'fpr']
             t0 = phases[0][1]
 
-            # Tentukan fase tiap ronde berdasarkan timestamp selesainya agregasi
             def phase_of(ts):
                 label = phases[0][0]
                 for name, start in phases:
@@ -196,7 +204,8 @@ def run_automated_experiment():
             rows = []
             for i in range(n_rounds):
                 ts = hist['timestamp'][i]
-                row = {'Ronde': i + 1, 'Detik': round(ts - t0, 1), 'Fase': phase_of(ts)}
+                row = {'Ronde': i + 1, 'Detik': round(ts - t0, 1), 'Fase': phase_of(ts),
+                       'Mode': 'test' if hist.get('is_test', [0] * n_rounds)[i] else 'train'}
                 row.update({k: round(hist[k][i], 4) for k in metric_keys})
                 for k in ('tp', 'fp', 'tn', 'fn'):
                     row[f'real_{k}'] = int(hist.get(f'real_{k}', [0] * n_rounds)[i])
@@ -205,7 +214,6 @@ def run_automated_experiment():
             df_round.to_csv(os.path.join(BASE_DIR, 'hasil_riset_per_ronde.csv'), index=False)
 
             def from_counts(tp, fp, tn, fn):
-                """Metrik dari confusion matrix; None jika tidak terdefinisi (mis. tidak ada serangan)."""
                 tot = tp + fp + tn + fn
                 prec = tp / (tp + fp) if (tp + fp) else None
                 rec = tp / (tp + fn) if (tp + fn) else None
@@ -218,9 +226,11 @@ def run_automated_experiment():
 
             label_map = {'accuracy': 'Accuracy', 'precision': 'Precision', 'recall': 'Recall',
                          'f1_score': 'F1-Score', 'fpr': 'False Positive Rate'}
-            groups = [('Keseluruhan', df_round)] + [(n, df_round[df_round['Fase'] == n]) for n, _ in phases]
+            # 'Test_Gabungan' = seluruh ronde fase test (model dibekukan) -> angka utama untuk skripsi
+            test_df = df_round[df_round['Fase'] != 'Fase1_Learning']
+            groups = [('Keseluruhan', df_round), ('Test_Gabungan', test_df)] + \
+                     [(n, df_round[df_round['Fase'] == n]) for n, _ in phases]
 
-            # Bagian A: model global diuji pada data uji server (rata-rata per ronde)
             summary = {'Evaluasi': [], 'Metric': []}
             for g, _ in groups:
                 summary[g] = []
@@ -230,7 +240,6 @@ def run_automated_experiment():
                 for g, sub in groups:
                     summary[g].append(r4(sub[k].mean()) if len(sub) else None)
 
-            # Bagian B: model global diuji pada TRAFIK RIIL tiap fase (test-then-train, total confusion matrix)
             real = {g: from_counts(*(int(sub[f'real_{c}'].sum()) for c in ('tp', 'fp', 'tn', 'fn')))
                     for g, sub in groups}
             for k in metric_keys:
@@ -250,7 +259,25 @@ def run_automated_experiment():
             print(f" -> {n_rounds} ronde agregasi: " +
                   ", ".join(f"{n}={int((df_round['Fase'] == n).sum())}" for n, _ in phases))
             print(df.to_string(index=False))
-            print("\n[SUKSES] Ringkasan per fase -> 'hasil_riset.csv', detail per ronde -> 'hasil_riset_per_ronde.csv'")
+            
+            # --- TAMBAHAN: Laporan Rata-rata Akhir ---
+            avg_report = []
+            for i, metric in enumerate(summary['Metric']):
+                if metric in ['Accuracy', 'Precision', 'Recall', 'F1-Score']:
+                    avg_report.append({
+                        'Evaluasi': summary['Evaluasi'][i],
+                        'Metric': metric,
+                        'Rata_Rata_Akhir': summary['Test_Gabungan'][i]
+                    })
+            df_avg = pd.DataFrame(avg_report)
+            df_avg.to_csv(os.path.join(BASE_DIR, 'hasil_rata_rata_akhir.csv'), index=False)
+            
+            print("\n=== Laporan Rata-Rata Akhir ===")
+            print(df_avg.to_string(index=False))
+            # -----------------------------------------
+
+            print("\n[SUKSES] Ringkasan -> 'hasil_riset.csv' (pakai kolom Test_Gabungan), "
+                  "detail per ronde -> 'hasil_riset_per_ronde.csv', rata-rata akhir -> 'hasil_rata_rata_akhir.csv'")
     except Exception as e:
         print(f"[ERROR] Masalah komunikasi jaringan: {e}")
 
