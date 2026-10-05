@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
 def generate_visual_report():
-    csv_file = 'report_traffic_epoch.csv'
+    csv_file = 'hasil_riset_per_ronde.csv'
     
     # Cek apakah file data mentah eksperimen tersedia
     if not os.path.exists(csv_file):
@@ -14,53 +16,61 @@ def generate_visual_report():
         return
 
     print(f"[REPORT] Membaca data eksperimen dari {csv_file}...")
-    df = pd.DataFrame(csv_file)
+    # PERBAIKAN: Gunakan pd.read_csv() alih-alih pd.DataFrame()
+    df = pd.read_csv(csv_file)
     
     # Set tema grafik agar terlihat profesional untuk jurnal/skripsi
     sns.set_theme(style="whitegrid")
     plt.rcParams.update({'font.size': 11})
-    #test test
 
     # =========================================================================
-    # GRAFIK 1: Tren Penurunan Loss per Node sepanjang Epoch dan Round
+    # GRAFIK 1: Tren Performa (Metrik) per Ronde
     # =========================================================================
-    print("[REPORT] Membuat Grafik 1: Tren Nilai Loss Per-Epoch...")
-    plt.figure(figsize=(10, 5))
+    print("[REPORT] Membuat Grafik 1: Tren Metrik Evaluasi Per Ronde...")
+    plt.figure(figsize=(10, 6))
     
-    # Membuat kolom gabungan Round-Epoch untuk sumbu X agar terlihat linier
-    df['Round_Epoch'] = df.apply(lambda row: f"R{int(row['Round'])}E{int(row['Epoch'])}", axis=1)
+    sns.lineplot(data=df, x='Ronde', y='accuracy', label='Accuracy', marker='o', linewidth=2)
+    sns.lineplot(data=df, x='Ronde', y='precision', label='Precision', marker='s', linewidth=2)
+    sns.lineplot(data=df, x='Ronde', y='recall', label='Recall', marker='^', linewidth=2)
+    sns.lineplot(data=df, x='Ronde', y='f1_score', label='F1-Score', marker='d', linewidth=2)
     
-    sns.lineplot(data=df, x='Round_Epoch', y='Loss', hue='Host', marker='o', linewidth=2)
-    plt.title('Karakteristik Penurunan Nilai Loss pada Tiap Node Jaringan')
-    plt.xlabel('Siklus Pelatihan (R = Round, E = Epoch)')
-    plt.ylabel('Nilai Loss (BCE Loss)')
-    plt.xticks(rotation=45)
+    plt.title('Perkembangan Metrik Evaluasi Sepanjang Siklus Federated Learning')
+    plt.xlabel('Ronde (Round)')
+    plt.ylabel('Nilai (0.0 - 1.0)')
+    plt.ylim(-0.05, 1.05)
+    plt.xticks(df['Ronde'].unique())
+    plt.legend()
     plt.tight_layout()
     
-    grafik_loss_path = 'grafik_loss_epoch.png'
+    grafik_loss_path = 'grafik_metrik_ronde.png'
     plt.savefig(grafik_loss_path, dpi=300)
     plt.close()
-    print(f" -> [SUKSES] Grafik Loss disimpan sebagai: {grafik_loss_path}")
+    print(f" -> [SUKSES] Grafik Metrik disimpan sebagai: {grafik_loss_path}")
 
     # =========================================================================
-    # GRAFIK 2: Analisis Volume Trafik Paket yang Diterima Tiap Node
+    # GRAFIK 2: Analisis Volume TP, FP, TN, FN per Fase
     # =========================================================================
-    print("[REPORT] Membuat Grafik 2: Perbandingan Volume Trafik Paket Jaringan...")
-    plt.figure(figsize=(8, 5))
+    print("[REPORT] Membuat Grafik 2: Performa Deteksi Riil per Fase...")
+    plt.figure(figsize=(10, 6))
     
-    # Mengambil total paket unik per Host di setiap putaran
-    df_traffic = df.groupby(['Round', 'Host'])['Traffic_Packets'].first().reset_index()
+    # Group data riil berdasarkan fase eksperimen
+    df_fase = df.groupby('Fase')[['real_tp', 'real_tn', 'real_fp', 'real_fn']].sum().reset_index()
     
-    sns.barplot(data=df_traffic, x='Round', y='Traffic_Packets', hue='Host', palette='viridis')
-    plt.title('Perbandingan Volume Paket Trafik yang Teranalisis per Ronde')
-    plt.xlabel('Ronde Federated Learning')
-    plt.ylabel('Jumlah Paket Data (Ditangkap Scapy)')
+    # Melts data agar mudah di-plot oleh seaborn dengan format batang
+    df_melt = pd.melt(df_fase, id_vars=['Fase'], value_vars=['real_tp', 'real_tn', 'real_fp', 'real_fn'], 
+                      var_name='Jenis Evaluasi', value_name='Jumlah Paket Riil')
+    
+    sns.barplot(data=df_melt, x='Fase', y='Jumlah Paket Riil', hue='Jenis Evaluasi', palette='viridis')
+    plt.title('Jumlah Tangkapan Paket Trafik (Confusion Matrix Riil) per Fase Jaringan')
+    plt.xlabel('Fase Eksperimen')
+    plt.ylabel('Total Paket Terproses (Agent Data)')
+    plt.xticks(rotation=15)
     plt.tight_layout()
     
-    grafik_traffic_path = 'grafik_volume_trafik.png'
+    grafik_traffic_path = 'grafik_volume_trafik_fase.png'
     plt.savefig(grafik_traffic_path, dpi=300)
     plt.close()
-    print(f" -> [SUKSES] Grafik Volume Trafik disimpan sebagai: {grafik_traffic_path}")
+    print(f" -> [SUKSES] Grafik Volume Deteksi disimpan sebagai: {grafik_traffic_path}")
 
     # =========================================================================
     # RINGKASAN TEKS STATISTIK
@@ -68,13 +78,13 @@ def generate_visual_report():
     print("\n=======================================================")
     print("           RINGKASAN EKSEKUSI DATA EKSPERIMEN          ")
     print("=======================================================")
-    for host in df['Host'].unique():
-        host_df = df[df['Host'] == host]
-        max_acc = host_df['Local_Accuracy'].max() * 100
-        total_pockets = host_df['Traffic_Packets'].sum()
-        print(f"Node Jaringan [{host}]:")
-        print(f"  - Akurasi Deteksi Tertinggi : {max_acc:.2f}%")
-        print(f"  - Total Akumulasi Paket Trafik: {total_pockets} paket")
+    print(f"Total Ronde Terekam            : {len(df)}")
+    if len(df) > 0:
+        print(f"Akurasi Keseluruhan (Rata-rata): {df['accuracy'].mean() * 100:.2f}%")
+        print(f"Total Serangan Dikenali (TP)   : {df['real_tp'].sum():.0f} paket")
+        print(f"Total Serangan Lolos (FN)      : {df['real_fn'].sum():.0f} paket")
+        print(f"Total Normal Dikenali (TN)     : {df['real_tn'].sum():.0f} paket")
+        print(f"Total Normal Diblokir (FP)     : {df['real_fp'].sum():.0f} paket")
     print("=======================================================")
     print("[SELESAI] Seluruh laporan visual telah sukses diterbitkan!")
 

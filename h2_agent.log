@@ -10,93 +10,123 @@
 [h2] Sinkronisasi Model Global Ronde 1 Sukses.
 
 [h2 - RONDE 2] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 237 paket (sampel 237, serangan 0) | Eval global model -> TP=0 FP=0 TN=237 FN=0
-[h2] Training 3.4s | Akurasi Lokal (balanced): 0.750 | data latih 437 (serangan 0)
+[h2] Sniff 10.0s | Trafik riil: 245 paket (sampel 245, serangan 0) | Eval global model -> TP=0 FP=0 TN=245 FN=0
+[h2] Training 2.0s | Akurasi Lokal (balanced): 0.750 | data latih 445 (serangan 0)
 [h2] Sinkronisasi Model Global Ronde 2 Sukses.
 
 [h2 - RONDE 3] Mengendus trafik via Scapy...
-[h2] Sniff 6.3s | Trafik riil: 3999 paket (sampel 3000, serangan 2905) | Eval global model -> TP=0 FP=0 TN=95 FN=2905
-[h2] Training 43.5s | Akurasi Lokal (balanced): 1.000 | data latih 4832 (serangan 4405)
+[h2] Sniff 10.0s | Trafik riil: 574 paket (sampel 574, serangan 294) | Eval global model -> TP=0 FP=0 TN=280 FN=294
+[h2] Training 0.2s | Akurasi Lokal (balanced): 1.000 | data latih 1148 (serangan 581)
 [h2] Sinkronisasi Model Global Ronde 3 Sukses.
 
 [h2 - RONDE 4] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 307 paket (sampel 307, serangan 0) | Eval global model -> TP=0 FP=0 TN=307 FN=0
-[h2] Training 6.0s | Akurasi Lokal (balanced): 1.000 | data latih 707 (serangan 200)
+[h2] Sniff 10.0s | Trafik riil: 367 paket (sampel 367, serangan 118) | Eval global model -> TP=118 FP=0 TN=249 FN=0
+[h2] Training 3.8s | Akurasi Lokal (balanced): 1.000 | data latih 767 (serangan 318)
 [h2] Sinkronisasi Model Global Ronde 4 Sukses.
 
 [h2 - RONDE 5] Mengendus trafik via Scapy...
-[h2] Sniff 2.6s | Trafik riil: 4000 paket (sampel 3000, serangan 2976) | Eval global model -> TP=2976 FP=0 TN=24 FN=0
-[h2] Training 44.8s | Akurasi Lokal (balanced): 1.000 | data latih 5163 (serangan 4476)
+[h2] Sniff 10.0s | Trafik riil: 328 paket (sampel 328, serangan 114) | Eval global model -> TP=114 FP=0 TN=214 FN=0
+[h2] Training 2.1s | Akurasi Lokal (balanced): 1.000 | data latih 728 (serangan 314)
 [h2] Sinkronisasi Model Global Ronde 5 Sukses.
 
 [h2 - RONDE 6] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 253 paket (sampel 253, serangan 0) | Eval global model -> TP=0 FP=0 TN=253 FN=0
-[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
+[h2] Sniff 10.0s | Trafik riil: 596 paket (sampel 596, serangan 310) | Eval global model -> TP=310 FP=0 TN=286 FN=0
+[h2] Training 5.6s | Akurasi Lokal (balanced): 1.000 | data latih 1192 (serangan 608)
 [h2] Sinkronisasi Model Global Ronde 6 Sukses.
 
 [h2 - RONDE 7] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 235 paket (sampel 235, serangan 0) | Eval global model -> TP=0 FP=0 TN=235 FN=0
-[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
+[h2] Sniff 10.0s | Trafik riil: 352 paket (sampel 352, serangan 74) | Eval global model -> TP=74 FP=0 TN=278 FN=0
+[h2] Training 0.1s | Akurasi Lokal (balanced): 1.000 | data latih 752 (serangan 274)
 [h2] Sinkronisasi Model Global Ronde 7 Sukses.
 
 [h2 - RONDE 8] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 248 paket (sampel 248, serangan 0) | Eval global model -> TP=0 FP=0 TN=248 FN=0
-[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
+[h2] Sniff 10.0s | Trafik riil: 684 paket (sampel 684, serangan 386) | Eval global model -> TP=386 FP=0 TN=298 FN=0
+[h2] Training 6.5s | Akurasi Lokal (balanced): 1.000 | data latih 1368 (serangan 728)
 [h2] Sinkronisasi Model Global Ronde 8 Sukses.
 
 [h2 - RONDE 9] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 2011 paket (sampel 2011, serangan 1798) | Eval global model -> TP=1798 FP=0 TN=213 FN=0
-[h2] MODE TEST: tanpa training. Akurasi (balanced) 1.000
+[h2] Sniff 10.0s | Trafik riil: 335 paket (sampel 335, serangan 74) | Eval global model -> TP=74 FP=0 TN=261 FN=0
+[h2] Training 6.0s | Akurasi Lokal (balanced): 1.000 | data latih 735 (serangan 274)
 [h2] Sinkronisasi Model Global Ronde 9 Sukses.
 
 [h2 - RONDE 10] Mengendus trafik via Scapy...
-[h2] Sniff 1.4s | Trafik riil: 4000 paket (sampel 3000, serangan 3000) | Eval global model -> TP=3000 FP=0 TN=0 FN=0
-[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
+[h2] Sniff 10.0s | Trafik riil: 516 paket (sampel 516, serangan 248) | Eval global model -> TP=248 FP=0 TN=268 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 1.000
 [h2] Sinkronisasi Model Global Ronde 10 Sukses.
 
 [h2 - RONDE 11] Mengendus trafik via Scapy...
-[h2] Sniff 1.5s | Trafik riil: 4000 paket (sampel 3000, serangan 3000) | Eval global model -> TP=3000 FP=0 TN=0 FN=0
+[h2] Sniff 10.0s | Trafik riil: 247 paket (sampel 247, serangan 0) | Eval global model -> TP=0 FP=0 TN=247 FN=0
 [h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
 [h2] Sinkronisasi Model Global Ronde 11 Sukses.
 
 [h2 - RONDE 12] Mengendus trafik via Scapy...
-[h2] Sniff 1.4s | Trafik riil: 4000 paket (sampel 3000, serangan 3000) | Eval global model -> TP=3000 FP=0 TN=0 FN=0
-[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
+[h2] Sniff 10.0s | Trafik riil: 436 paket (sampel 436, serangan 174) | Eval global model -> TP=174 FP=0 TN=262 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 1.000
 [h2] Sinkronisasi Model Global Ronde 12 Sukses.
 
 [h2 - RONDE 13] Mengendus trafik via Scapy...
-[h2] Sniff 1.5s | Trafik riil: 4000 paket (sampel 3000, serangan 3000) | Eval global model -> TP=3000 FP=0 TN=0 FN=0
-[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
+[h2] Sniff 10.0s | Trafik riil: 868 paket (sampel 868, serangan 596) | Eval global model -> TP=596 FP=0 TN=272 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 1.000
 [h2] Sinkronisasi Model Global Ronde 13 Sukses.
 
 [h2 - RONDE 14] Mengendus trafik via Scapy...
-[h2] Sniff 1.5s | Trafik riil: 4000 paket (sampel 3000, serangan 3000) | Eval global model -> TP=3000 FP=0 TN=0 FN=0
+[h2] Sniff 10.0s | Trafik riil: 240 paket (sampel 240, serangan 0) | Eval global model -> TP=0 FP=0 TN=240 FN=0
 [h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
 [h2] Sinkronisasi Model Global Ronde 14 Sukses.
 
 [h2 - RONDE 15] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 225 paket (sampel 225, serangan 0) | Eval global model -> TP=0 FP=0 TN=225 FN=0
+[h2] Sniff 10.0s | Trafik riil: 226 paket (sampel 226, serangan 0) | Eval global model -> TP=0 FP=0 TN=226 FN=0
 [h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
 [h2] Sinkronisasi Model Global Ronde 15 Sukses.
 
 [h2 - RONDE 16] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 227 paket (sampel 227, serangan 0) | Eval global model -> TP=0 FP=0 TN=227 FN=0
-[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
+[h2] Sniff 10.0s | Trafik riil: 934 paket (sampel 934, serangan 652) | Eval global model -> TP=652 FP=0 TN=282 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 1.000
 [h2] Sinkronisasi Model Global Ronde 16 Sukses.
 
 [h2 - RONDE 17] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 242 paket (sampel 242, serangan 0) | Eval global model -> TP=0 FP=0 TN=242 FN=0
-[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
+[h2] Sniff 10.0s | Trafik riil: 382 paket (sampel 382, serangan 126) | Eval global model -> TP=126 FP=0 TN=256 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 1.000
 [h2] Sinkronisasi Model Global Ronde 17 Sukses.
 
 [h2 - RONDE 18] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 162 paket (sampel 162, serangan 0) | Eval global model -> TP=0 FP=0 TN=162 FN=0
+[h2] Sniff 10.0s | Trafik riil: 243 paket (sampel 243, serangan 0) | Eval global model -> TP=0 FP=0 TN=243 FN=0
 [h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
 [h2] Sinkronisasi Model Global Ronde 18 Sukses.
 
 [h2 - RONDE 19] Mengendus trafik via Scapy...
-[h2] Sniff 10.0s | Trafik riil: 0 paket (sampel 0, serangan 0) | Eval global model -> TP=0 FP=0 TN=0 FN=0
-[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.500
+[h2] Sniff 10.0s | Trafik riil: 516 paket (sampel 516, serangan 258) | Eval global model -> TP=258 FP=0 TN=258 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 1.000
 [h2] Sinkronisasi Model Global Ronde 19 Sukses.
 
 [h2 - RONDE 20] Mengendus trafik via Scapy...
+[h2] Sniff 10.0s | Trafik riil: 789 paket (sampel 789, serangan 516) | Eval global model -> TP=516 FP=0 TN=273 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 1.000
+[h2] Sinkronisasi Model Global Ronde 20 Sukses.
+
+[h2 - RONDE 21] Mengendus trafik via Scapy...
+[h2] Sniff 10.0s | Trafik riil: 268 paket (sampel 268, serangan 0) | Eval global model -> TP=0 FP=0 TN=268 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
+[h2] Sinkronisasi Model Global Ronde 21 Sukses.
+
+[h2 - RONDE 22] Mengendus trafik via Scapy...
+[h2] Sniff 10.0s | Trafik riil: 270 paket (sampel 270, serangan 0) | Eval global model -> TP=0 FP=0 TN=270 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.750
+[h2] Sinkronisasi Model Global Ronde 22 Sukses.
+
+[h2 - RONDE 23] Mengendus trafik via Scapy...
+[h2] Sniff 10.0s | Trafik riil: 1059 paket (sampel 1059, serangan 782) | Eval global model -> TP=782 FP=0 TN=277 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 1.000
+[h2] Sinkronisasi Model Global Ronde 23 Sukses.
+
+[h2 - RONDE 24] Mengendus trafik via Scapy...
+[h2] Sniff 10.0s | Trafik riil: 54 paket (sampel 54, serangan 34) | Eval global model -> TP=34 FP=0 TN=20 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 1.000
+[h2] Sinkronisasi Model Global Ronde 24 Sukses.
+
+[h2 - RONDE 25] Mengendus trafik via Scapy...
+[h2] Sniff 10.0s | Trafik riil: 0 paket (sampel 0, serangan 0) | Eval global model -> TP=0 FP=0 TN=0 FN=0
+[h2] MODE TEST: tanpa training. Akurasi (balanced) 0.500
+[h2] Sinkronisasi Model Global Ronde 25 Sukses.
+
+[h2 - RONDE 26] Mengendus trafik via Scapy...

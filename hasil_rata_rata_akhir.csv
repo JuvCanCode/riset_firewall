@@ -1,8 +1,8 @@
 Evaluasi,Metric,Rata_Rata_Akhir
-Server (data uji),Accuracy,0.889
-Server (data uji),Precision,0.9003
-Server (data uji),Recall,0.8125
-Server (data uji),F1-Score,0.8541
+Server (data uji),Accuracy,0.897
+Server (data uji),Precision,0.9255
+Server (data uji),Recall,0.8075
+Server (data uji),F1-Score,0.8625
 Trafik Riil (federated),Accuracy,1.0
 Trafik Riil (federated),Precision,1.0
 Trafik Riil (federated),Recall,1.0

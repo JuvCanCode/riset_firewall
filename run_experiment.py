@@ -93,20 +93,27 @@ def run_automated_experiment():
     h4 = mininet_hosts['h4']
 
     sc = config.get('scenario', {})
-    # Fase learning (model dilatih; berisi benign + burst serangan)
-    learn_cycles = int(sc.get('learn_cycles', 4))
-    learn_idle = int(sc.get('learn_idle', 20))      # detik benign sebelum tiap burst
-    learn_burst = int(sc.get('learn_burst', 10))    # detik durasi tiap burst serangan
-    port_probe = bool(sc.get('port_probe', True))   # sertakan akses ke port terlarang
-    # Fase test (model dibekukan)
-    d_benign1 = int(sc.get('benign_1_duration', 45))
-    d_ddos = int(sc.get('ddos_duration', 45))
-    d_benign2 = int(sc.get('benign_2_duration', 45))
     victim = mininet_hosts[sc.get('ddos_target', 'h2')]
     attackers = [mininet_hosts[n] for n in sc.get('ddos_attackers', ['h3', 'h4'])]
     payload = int(sc.get('ddos_payload_size', 1200))
+    port_probe = bool(sc.get('port_probe', True))   # sertakan akses ke port terlarang
+
+    # Laju flood: 0 = ping -f (maksimum, rasio serangan sangat dominan); >0 = interval detik antar paket.
+    # Atur nilai ini untuk menyetel rasio serangan di fase test (target paper: +-40%).
+    flood_interval = float(sc.get('ddos_interval', 0.05))
+
+    # Fase learning (model dilatih; benign + burst serangan)
+    learn_cycles = int(sc.get('learn_cycles', 4))
+    learn_idle = int(sc.get('learn_idle', 20))
+    learn_burst = int(sc.get('learn_burst', 10))
+    # Fase test campuran (model dibekukan; benign berjalan terus + burst serangan)
+    test_cycles = int(sc.get('test_cycles', 4))
+    test_idle = int(sc.get('test_idle', 25))
+    test_burst = int(sc.get('test_burst', 10))
+
     d_learn = learn_cycles * (learn_idle + learn_burst + 1)
-    total_duration = d_learn + d_benign1 + d_ddos + d_benign2 + 60
+    d_test = test_cycles * (test_idle + test_burst + 1)
+    total_duration = d_learn + d_test + 60
 
     h1.cmd(f"timeout {total_duration} sh -c 'while true; do nc -l -p 8889 > /dev/null 2>&1; done' > /dev/null 2>&1 &")
     h2.cmd(f"timeout {total_duration} sh -c 'while true; do nc -l -p 8888 > /dev/null 2>&1; done' > /dev/null 2>&1 &")
@@ -121,12 +128,13 @@ def run_automated_experiment():
             src.cmd(f"timeout {duration} sh -c '{loop}' > /dev/null 2>&1 &")
 
     def start_flood(duration):
+        opt = '-f' if flood_interval <= 0 else f'-i {flood_interval}'
         for a in attackers:
-            a.cmd(f'ping -f -s {payload} -w {duration} {victim.IP()} > /dev/null 2>&1 &')
+            a.cmd(f'ping {opt} -s {payload} -w {duration} {victim.IP()} > /dev/null 2>&1 &')
 
     def stop_flood():
         for a in attackers:
-            a.cmd('pkill -f "ping -f"')
+            a.cmd('pkill -f "ping -f"; pkill -f "ping -i"')
 
     def start_port_probe(duration):
         """Akses TCP ke port terlarang (label serangan kelas 'port scan')."""
@@ -134,8 +142,8 @@ def run_automated_experiment():
             loop = f"while true; do nc -w 1 -z {victim.IP()} {BLOCKED_PROBE_PORT} > /dev/null 2>&1; sleep 0.5; done"
             a.cmd(f"timeout {duration} sh -c '{loop}' > /dev/null 2>&1 &")
 
+    # Semua host berperilaku normal; benign berjalan TERUS meski serangan berlangsung (trafik tercampur)
     benign_all = [(h1, h2, 8888), (h2, h1, 8889), (h3, h1, 8889), (h4, h2, 8888)]
-    benign_bg = [p for p in benign_all if p[0] not in attackers]
 
     phases = []  # (nama_fase, waktu_mulai)
 
@@ -154,32 +162,23 @@ def run_automated_experiment():
         time.sleep(learn_burst + 1)
         stop_flood()
 
-    # ================= FASE TEST: model dibekukan =================
+    # ================= FASE 2: TEST CAMPURAN (model dibekukan) =================
     requests.post(f"{backend_url}/set_mode", json={"mode": "test"}, timeout=5)
-
-    print(f"\n[FASE 2 - TEST/BENIGN] Model DIBEKUKAN. Trafik normal selama {d_benign1} detik...")
-    phases.append(('Fase2_Test_Benign', time.time()))
-    start_benign(benign_all, d_benign1)
-    net.ping([h1, h2])
-    time.sleep(d_benign1)
-
     names = ", ".join(a.name for a in attackers)
-    print(f"\n[FASE 3 - TEST/DDoS] {names} ICMP Flood (payload {payload} B) ke {victim.name} "
-          f"({victim.IP()}) selama {d_ddos} detik + trafik normal latar...")
-    phases.append(('Fase3_Test_DDoS', time.time()))
-    start_benign(benign_bg, d_ddos)
-    start_flood(d_ddos)
-    if port_probe:
-        start_port_probe(d_ddos)
-    time.sleep(d_ddos)
-    stop_flood()
-
-    print(f"\n[FASE 4 - TEST/BENIGN] Serangan berhenti, kembali trafik normal selama {d_benign2} detik...")
-    phases.append(('Fase4_Test_Benign', time.time()))
-    start_benign(benign_all, d_benign2)
-    print(" -> Uji konektivitas pasca-serangan:")
+    print(f"\n[FASE 2 - TEST CAMPURAN] Model DIBEKUKAN. Benign berjalan terus selama {d_test}s; "
+          f"{test_cycles} burst serangan ({names} -> {victim.name}, {test_burst}s, "
+          f"interval {flood_interval}s, payload {payload} B).")
+    phases.append(('Fase2_Test_Campuran', time.time()))
+    start_benign(benign_all, d_test)
     net.ping([h1, h2])
-    time.sleep(d_benign2)
+    for c in range(test_cycles):
+        time.sleep(test_idle)
+        print(f" -> Burst serangan {c + 1}/{test_cycles}")
+        start_flood(test_burst)
+        if port_probe:
+            start_port_probe(test_burst)
+        time.sleep(test_burst + 1)
+        stop_flood()
 
     print("\n[CONFIG-AUTOMATION] Menunggu ronde FL terakhir selesai (25 detik)...")
     time.sleep(25)
@@ -227,7 +226,7 @@ def run_automated_experiment():
             label_map = {'accuracy': 'Accuracy', 'precision': 'Precision', 'recall': 'Recall',
                          'f1_score': 'F1-Score', 'fpr': 'False Positive Rate'}
             # 'Test_Gabungan' = seluruh ronde fase test (model dibekukan) -> angka utama untuk skripsi
-            test_df = df_round[df_round['Fase'] != 'Fase1_Learning']
+            test_df = df_round[df_round['Mode'] == 'test']
             groups = [('Keseluruhan', df_round), ('Test_Gabungan', test_df)] + \
                      [(n, df_round[df_round['Fase'] == n]) for n, _ in phases]
 
@@ -257,33 +256,25 @@ def run_automated_experiment():
             df.to_csv(os.path.join(BASE_DIR, 'hasil_riset.csv'), index=False)
 
             print(f" -> {n_rounds} ronde agregasi: " +
-                  ", ".join(f"{n}={int((df_round['Fase'] == n).sum())}" for n, _ in phases))
+                  ", ".join(f"{n}={int((df_round['Fase'] == n).sum())}" for n, _ in phases) +
+                  f" | ronde mode test={len(test_df)}")
             print(df.to_string(index=False))
-            
-            # --- TAMBAHAN: Laporan Rata-rata Akhir ---
-            avg_report = []
-            for i, metric in enumerate(summary['Metric']):
-                if metric in ['Accuracy', 'Precision', 'Recall', 'F1-Score']:
-                    avg_report.append({
-                        'Evaluasi': summary['Evaluasi'][i],
-                        'Metric': metric,
-                        'Rata_Rata_Akhir': summary['Test_Gabungan'][i]
-                    })
-            df_avg = pd.DataFrame(avg_report)
-            df_avg.to_csv(os.path.join(BASE_DIR, 'hasil_rata_rata_akhir.csv'), index=False)
-            
-            print("\n=== Laporan Rata-Rata Akhir ===")
-            print(df_avg.to_string(index=False))
-            # -----------------------------------------
 
+            # Rasio serangan pada fase test (target paper: 88 ancaman dari 225 flow = 39%)
+            tp_t, fp_t, tn_t, fn_t = (int(test_df[f'real_{c}'].sum()) for c in ('tp', 'fp', 'tn', 'fn'))
+            tot_t = tp_t + fp_t + tn_t + fn_t
+            if tot_t:
+                print(f"\n[RASIO] Fase test: {tp_t + fn_t} serangan dari {tot_t} sampel "
+                      f"= {100 * (tp_t + fn_t) / tot_t:.1f}% (paper: 39%). "
+                      f"Setel 'ddos_interval' / 'test_idle' di config.json bila terlalu jauh.")
             print("\n[SUKSES] Ringkasan -> 'hasil_riset.csv' (pakai kolom Test_Gabungan), "
-                  "detail per ronde -> 'hasil_riset_per_ronde.csv', rata-rata akhir -> 'hasil_rata_rata_akhir.csv'")
+                  "detail per ronde -> 'hasil_riset_per_ronde.csv'")
     except Exception as e:
         print(f"[ERROR] Masalah komunikasi jaringan: {e}")
 
     print("\n[CONFIG-AUTOMATION] Seluruh Skenario Eksperimen Selesai. Mematikan Infrastruktur Mininet...")
     for host_obj in mininet_hosts.values():
-        host_obj.cmd('pkill -f local_agent.py; pkill -f "nc -l"; pkill -f "ping -f"')
+        host_obj.cmd('pkill -f local_agent.py; pkill -f "nc -l"; pkill -f "ping -f"; pkill -f "ping -i"')
     net.stop()
 
 if __name__ == '__main__':
